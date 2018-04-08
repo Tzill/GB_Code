@@ -1,0 +1,101 @@
+// Иногда при попытке авторизоваться возникает такая штука
+при этом, если запустить в след. раз клиент и авторизоваться под другим, а потом запустить еще один и авторизоваться под первым - то всё работает нормально.
+
+Exception in thread "JavaFX Application Thread" java.lang.NullPointerException
+	at com.sun.javafx.text.PrismTextLayout.addTextRun(PrismTextLayout.java:755)
+	at com.sun.javafx.text.GlyphLayout.addTextRun(GlyphLayout.java:140)
+	at com.sun.javafx.text.GlyphLayout.breakRuns(GlyphLayout.java:312)
+	at com.sun.javafx.text.PrismTextLayout.buildRuns(PrismTextLayout.java:770)
+	at com.sun.javafx.text.PrismTextLayout.layout(PrismTextLayout.java:1021)
+	at com.sun.javafx.text.PrismTextLayout.ensureLayout(PrismTextLayout.java:223)
+	at com.sun.javafx.text.PrismTextLayout.getBounds(PrismTextLayout.java:246)
+	at javafx.scene.text.Text.getLogicalBounds(Text.java:358)
+Exception in thread "JavaFX Application Thread" java.lang.ArrayIndexOutOfBoundsException
+Exception in thread "JavaFX Application Thread" java.lang.ArrayIndexOutOfBoundsException
+Exception in thread "JavaFX Application Thread" java.lang.ArrayIndexOutOfBoundsException
+
+
+в ClientHandler
+------------------
+  while (true) {
+                        String str = in.readUTF();
+                        System.out.println("Сообщение от клиента " + nickname + ": " + str);
+                        if (!str.startsWith("/")) {
+                            server.broadcastMsg(nickname + ": " + str);
+                        } else {
+                            if (str.equals("/end")) {
+                                break;
+                            }
+                            if (str.startsWith("/w ")) {
+                                // /w nick2 hello java
+                                String[] tokens = str.split("\\s", 3);
+                                if (tokens.length == 3) {
+                                    server.personalMsg(this, tokens[1], tokens[2]);
+                                } else {
+                                    sendMsg("Неверный формат личного сообщения");
+                                }
+                            }
+                            if (str.startsWith("/changenick ")) {
+                                // /changenick newNick
+                                String[] tokens = str.split("\\s", 2);
+                                if (tokens.length == 2) {
+                                    if (!server.isNickBusy(tokens[1])) {
+                                        System.out.println("ник свободен");
+                                        if (SQLHandler.tryToChangeNick(getNickname(), tokens[1])) {
+                                            System.out.println("sql запрос выполнен");
+											// почему-то сообщение о смене ника приходят только тому клиенту, который изменил, хотя должны по броадкасту
+                                            server.broadcastMsg("Ник " + getNickname() + " изменен на " + tokens[1]);
+                                            this.nickname = tokens[1];
+											// отправка сообщения клиенту для смены заголовка окна
+                                            sendMsg("/title " + nickname);
+                                            server.broadcastClientsList();
+                                        }
+                                    } else {
+                                        sendMsg("Такой ник уже занят");
+                                    }
+                                } else {
+                                    sendMsg("Неверный формат сообщения");
+                                }
+                            }
+                        }
+                    }
+					
+					
+в SQLHandler
+---------------
+    public static boolean tryToChangeNick(String oldNick, String newNick) {
+        try {
+            stmt.executeUpdate("UPDATE users SET nickname = '" + newNick + "' WHERE nickname ='" + oldNick + "'");
+            return true;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+	
+в Controler client
+---------------
+                         while (true) {
+                            String str = in.readUTF();
+                            if (!str.startsWith("/")) {
+                                textArea.appendText(str);
+                                textArea.appendText("\n");
+                            } else if (str.startsWith("/clientslist ")) {
+                                String[] tokens = str.split("\\s");
+                                Platform.runLater(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        clients.clear();
+                                        for (int i = 1; i < tokens.length; i++) {
+                                            clients.add(tokens[i]);
+                                        }
+                                    }
+                                });
+								// смена заголовка окна
+                            } else if (str.startsWith("/title ")) {
+                                String[] tokens = str.split("\\s", 2);
+                                Platform.runLater(()-> {
+                                    ((Stage)mainBox.getScene().getWindow()).setTitle("Java Chat Client: " + tokens[1]);
+                                });
+                            }
+                        }
